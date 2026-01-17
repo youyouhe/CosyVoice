@@ -208,8 +208,22 @@ class CosyVoiceFrontEnd:
 
     def frontend_instruct2(self, tts_text, instruct_text, prompt_wav, resample_rate, zero_shot_spk_id):
         model_input = self.frontend_zero_shot(tts_text, instruct_text, prompt_wav, resample_rate, zero_shot_spk_id)
-        del model_input['llm_prompt_speech_token']
-        del model_input['llm_prompt_speech_token_len']
+        # CRITICAL FIX: When zero_shot_spk_id is used, frontend_zero_shot copies spk2info
+        # which contains the OLD prompt_text from speaker creation, not the current instruct_text!
+        # We must re-extract and overwrite prompt_text with the current instruct_text.
+        instruct_text_token, instruct_text_token_len = self._extract_text_token(instruct_text)
+        model_input['prompt_text'] = instruct_text_token
+        model_input['prompt_text_len'] = instruct_text_token_len
+
+        # Remove speech tokens to prevent length constraints from reference audio
+        # Keep prompt_speech_feat as flow module needs it for audio generation
+        keys_to_delete = [
+            'llm_prompt_speech_token', 'llm_prompt_speech_token_len',
+            'flow_prompt_speech_token', 'flow_prompt_speech_token_len'
+        ]
+        for key in keys_to_delete:
+            if key in model_input:
+                del model_input[key]
         return model_input
 
     def frontend_vc(self, source_speech_16k, prompt_wav, resample_rate):
